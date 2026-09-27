@@ -1,7 +1,7 @@
 services:
 
   grafana-lgtm:
-    image: 'grafana/otel-lgtm:latest'
+    image: 'grafana/otel-lgtm:0.33.1'  # misma versión que en TestcontainersConfiguration
     ports:
       - '3000:3000'   # Grafana (interfaz web) - usuario/contraseña: admin/admin
       - '4317:4317'   # OTLP gRPC  (entrada de logs, métricas y trazas)
@@ -10,7 +10,7 @@ services:
       - lgtm-data:/data   # conserva datos y dashboards entre reinicios
 
   postgres:
-    image: 'postgres:18'  # versión fija: 'latest' puede cambiar de versión mayor sin avisar
+    image: 'postgres:18'  # versión fija (misma que en TestcontainersConfiguration): 'latest' puede cambiar de versión mayor sin avisar
     environment:
       POSTGRES_DB: siclone
       POSTGRES_USER: siclone
