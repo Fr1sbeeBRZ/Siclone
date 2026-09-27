@@ -93,8 +93,8 @@ comunicacion ◄─────────────────────�
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/<usuario>/gestion-expedientes.git
-cd gestion-expedientes
+git git@github.com:Fr1sbeeBRZ/Siclone.git
+cd Siclone
 ```
 
 ### 2. Arrancar el backend
