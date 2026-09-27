@@ -1,12 +1,27 @@
-# Gestión de Expedientes
+# Siclone · Gestión de Expedientes
 
 Aplicación web para la **alta, tramitación y comunicación de expedientes**, con procedimientos, formularios, flujos y plantillas configurables desde la propia aplicación.
 
-> 🚧 Proyecto en desarrollo.
+> 🚧 **Proyecto en fase inicial.** Por ahora el repositorio contiene la base del backend (dependencias, configuración, base de datos y observabilidad). Las funcionalidades de negocio, los módulos y el frontend todavía no están implementados.
 
 ---
 
-## Funcionalidades
+## Estado actual
+
+| Pieza | Estado |
+| --- | --- |
+| Proyecto Spring Boot (Maven, en la raíz del repositorio) | ✅ Creado |
+| PostgreSQL + Flyway (tabla de eventos de Spring Modulith) | ✅ Configurado |
+| Observabilidad (OpenTelemetry → Grafana LGTM) | ✅ Configurado |
+| Seguridad como OAuth2 Resource Server (JWT de Keycloak) | ⚙️ Configurado; Keycloak solo en tests |
+| Tests de integración con Testcontainers (PostgreSQL, LGTM, Keycloak) | ✅ Test de arranque del contexto |
+| Keycloak, MinIO y servidor SMTP en `compose.yaml` | ⏳ Pendiente |
+| Módulos de negocio (`expediente`, `procedimiento`, …) | ⏳ Pendiente |
+| Frontend (SvelteKit) | ⏳ Pendiente |
+
+---
+
+## Funcionalidades previstas
 
 - **Alta de expedientes** mediante formularios dinámicos definidos por cada procedimiento.
 - **Tramitación** con estados y transiciones configurables, controladas por rol.
@@ -23,23 +38,27 @@ Aplicación web para la **alta, tramitación y comunicación de expedientes**, c
 
 ## Stack tecnológico
 
+Dependencias ya incluidas en el `pom.xml`:
+
 | Capa | Tecnología |
 | --- | --- |
-| Backend | Java 25, Spring Boot 4, Spring Modulith |
-| Base de datos | PostgreSQL (`jsonb` para datos dinámicos), Flyway, Hibernate Envers |
+| Backend | Java 25, Spring Boot 4.1, Spring Modulith 2.1 |
+| Base de datos | PostgreSQL 18 (`jsonb` para datos dinámicos), Flyway, Hibernate Envers |
 | Seguridad | Keycloak (OIDC), Spring Security (OAuth2 Resource Server) |
-| Documentos | Handlebars (plantillas), OpenHTMLtoPDF (PDF/A), EU DSS (firma PAdES) |
+| Documentos | Handlebars (plantillas), OpenHTMLtoPDF (PDF/A), EU DSS 6.5 (firma PAdES) |
 | Almacenamiento | MinIO / S3 |
+| Email | Spring Mail (SMTP) |
 | API | REST + OpenAPI (springdoc) |
-| Frontend | SvelteKit (SPA) + Svelte 5 + TypeScript, TipTap |
-| Observabilidad | OpenTelemetry, Grafana Alloy, Loki, Tempo, Mimir, Grafana |
-| Infraestructura | Docker, Docker Compose |
+| Observabilidad | OpenTelemetry (trazas, métricas y logs por OTLP), Grafana LGTM |
+| Infraestructura | Docker, Docker Compose, Testcontainers |
+
+Previsto para el frontend: SvelteKit (SPA) + Svelte 5 + TypeScript, TipTap.
 
 ---
 
-## Arquitectura
+## Arquitectura prevista
 
-El backend es un **monolito modular** construido con [Spring Modulith](https://docs.spring.io/spring-modulith/reference/). Cada módulo de negocio tiene fronteras explícitas, verificadas automáticamente en los tests, y los módulos se comunican mediante **eventos de dominio persistidos**. Si un módulo falla, sus eventos quedan pendientes y se reprocesan sin perder información.
+El backend será un **monolito modular** construido con [Spring Modulith](https://docs.spring.io/spring-modulith/reference/). Cada módulo de negocio tendrá fronteras explícitas, verificadas automáticamente en los tests, y los módulos se comunicarán mediante **eventos de dominio persistidos** (tabla `event_publication`, ya creada). Si un módulo falla, sus eventos quedan pendientes y se reprocesan sin perder información.
 
 | Módulo | Responsabilidad |
 | --- | --- |
@@ -57,25 +76,36 @@ expediente ──(ExpedienteCambioEstado)──► documento ──(DocumentoGen
 comunicacion ◄───────────────────────(DocumentoFirmado)───────────────────────┘
 ```
 
+Cada módulo será un subpaquete de `fr1sbee.dev.siclone` (por ejemplo, `fr1sbee.dev.siclone.expediente`).
+
 ---
 
 ## Estructura del repositorio
 
 ```
 .
-├── backend/                  # Spring Boot + Spring Modulith
-│   ├── src/main/java/.../
-│   │   ├── expediente/
-│   │   ├── procedimiento/
-│   │   ├── plantilla/
-│   │   ├── documento/
-│   │   ├── firma/
-│   │   ├── comunicacion/
-│   │   └── seguridad/
-│   └── pom.xml
-├── frontend/                 # SvelteKit (SPA)
-├── compose.yaml              # Servicios para desarrollo local
-└── README.md
+├── src/
+│   ├── main/
+│   │   ├── java/fr1sbee/dev/siclone/
+│   │   │   ├── SicloneApplication.java
+│   │   │   ├── SecurityConfiguration.java              # JWT de Keycloak, rutas públicas
+│   │   │   └── OpenTelemetryAppenderInitializer.java   # envía los logs por OTLP
+│   │   └── resources/
+│   │       ├── application.properties
+│   │       ├── logback-spring.xml
+│   │       └── db/migration/                           # migraciones Flyway (V1__..., V2__...)
+│   └── test/
+│       ├── java/fr1sbee/dev/siclone/
+│       │   ├── SicloneApplicationTests.java
+│       │   ├── TestSicloneApplication.java             # arranque local con Testcontainers
+│       │   └── TestcontainersConfiguration.java
+│       └── resources/keycloak/siclone-realm.json       # realm importado en los tests
+├── docker/
+│   └── postgres/init/01-init.sql                       # extensiones de PostgreSQL (solo 1ª vez)
+├── compose.yaml                                        # servicios para desarrollo local
+├── .env.example                                        # variables para compose.yaml
+├── pom.xml
+└── mvnw, mvnw.cmd                                      # Maven Wrapper
 ```
 
 ---
@@ -83,8 +113,9 @@ comunicacion ◄─────────────────────�
 ## Requisitos
 
 - Java 25
-- Node.js (LTS)
 - Docker y Docker Compose
+
+No hace falta instalar Maven: se usa el wrapper (`./mvnw`).
 
 ---
 
@@ -93,67 +124,91 @@ comunicacion ◄─────────────────────�
 ### 1. Clonar el repositorio
 
 ```bash
-git git@github.com:Fr1sbeeBRZ/Siclone.git
+git clone git@github.com:Fr1sbeeBRZ/Siclone.git
 cd Siclone
 ```
 
-### 2. Arrancar el backend
+### 2. Crear el fichero `.env`
+
+`compose.yaml` lee la contraseña de PostgreSQL de un fichero `.env` (ignorado por git):
 
 ```bash
-cd backend
+cp .env.example .env
+```
+
+### 3. Arrancar la aplicación
+
+```bash
 ./mvnw spring-boot:run
 ```
 
-Gracias a *Docker Compose Support*, Spring Boot levanta automáticamente los servicios definidos en `compose.yaml`:
+Gracias a *Docker Compose Support*, Spring Boot levanta automáticamente los servicios de `compose.yaml` y se conecta a ellos sin configuración adicional:
 
-| Servicio | URL |
+| Servicio | URL / puerto |
 | --- | --- |
 | API | http://localhost:8080 |
 | Swagger UI | http://localhost:8080/swagger-ui.html |
-| Keycloak | http://localhost:8180 |
-| MinIO (consola) | http://localhost:9001 |
-| Grafana | http://localhost:3000 |
+| Actuator | http://localhost:8080/actuator |
+| PostgreSQL | `localhost:5432` (base de datos y usuario `siclone`) |
+| Grafana | http://localhost:3000 (admin / admin) |
+| OTLP (gRPC / HTTP) | `localhost:4317` / `localhost:4318` |
 
-> Ajusta los puertos si tu `compose.yaml` usa otros.
+Al arrancar, Flyway aplica las migraciones de `src/main/resources/db/migration`.
 
-### 3. Arrancar el frontend
+> La primera vez que se crea el volumen de PostgreSQL se ejecuta `docker/postgres/init/01-init.sql`, que instala las extensiones `pgcrypto`, `unaccent` y `pg_trgm`. Si el volumen ya existía antes de este script, bórralo para que se ejecute: `docker compose down -v`.
+
+> **Seguridad:** la API está protegida como OAuth2 Resource Server y espera JWT emitidos por Keycloak (`http://localhost:8180/realms/siclone` por defecto, configurable con `KEYCLOAK_ISSUER_URI`). Swagger UI, `/actuator/health` y `/actuator/info` son públicos; el resto exige token. Keycloak aún no está en `compose.yaml`, así que con `spring-boot:run` esas peticiones devolverán `401`.
+
+#### Alternativa: arrancar con Testcontainers
 
 ```bash
-cd frontend
-npm install
-npm run dev
+./mvnw spring-boot:test-run
 ```
 
-La aplicación queda disponible en http://localhost:5173.
+Usa `TestSicloneApplication`, que levanta PostgreSQL, Grafana LGTM y **Keycloak** (con el realm `siclone`) como contenedores efímeros. Útil para probar con Keycloak mientras no esté en `compose.yaml`; los datos se pierden al parar.
+
+---
+
+## Configuración
+
+Todo está en `src/main/resources/application.properties`. Los valores por defecto sirven para local y se pueden sobrescribir con variables de entorno:
+
+| Variable | Uso | Valor por defecto |
+| --- | --- | --- |
+| `POSTGRES_PASSWORD` | Contraseña de PostgreSQL en `compose.yaml` (fichero `.env`) | — |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Base de datos fuera de local | La aporta Docker Compose |
+| `KEYCLOAK_ISSUER_URI` | Emisor de los JWT | `http://localhost:8180/realms/siclone` |
+| `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | Almacenamiento de documentos | `http://localhost:9000`, `minioadmin`, `minioadmin`, `siclone-documentos` |
+| `MAIL_HOST`, `MAIL_PORT` | Servidor SMTP | `localhost`, `1025` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Destino OTLP fuera de local | Lo aporta Docker Compose |
 
 ---
 
 ## Tests
 
 ```bash
-cd backend
 ./mvnw verify
 ```
 
-Incluye:
+Requiere Docker. Por ahora incluye `SicloneApplicationTests`, que arranca el contexto completo contra PostgreSQL, Grafana LGTM y Keycloak en Testcontainers y comprueba que las migraciones de Flyway y las entidades JPA coinciden (`ddl-auto=validate`).
 
-- **Verificación de la arquitectura modular** (`ApplicationModules.verify()`): falla si un módulo accede a partes internas de otro o si hay dependencias cíclicas.
+Previsto a medida que se añadan módulos:
+
+- **Verificación de la arquitectura modular** (`ApplicationModules.verify()`): fallará si un módulo accede a partes internas de otro o si hay dependencias cíclicas.
 - **Tests por módulo** con `@ApplicationModuleTest`.
-- **Tests de integración** con Testcontainers (PostgreSQL, Keycloak).
-
-La documentación de los módulos (diagramas PlantUML) se genera en `backend/target/spring-modulith-docs`.
+- **Documentación de los módulos** (diagramas PlantUML) generada en `target/spring-modulith-docs`.
 
 ---
 
 ## Observabilidad
 
-La aplicación exporta logs, métricas y trazas por OTLP. En local, el contenedor `grafana/otel-lgtm` incluye el colector y el stack completo de Grafana.
+La aplicación exporta logs, métricas y trazas por OTLP. En local, el contenedor `grafana/otel-lgtm` incluye el colector y el stack completo de Grafana (Loki, Tempo, Prometheus/Mimir).
 
-- **Logs** → Loki, en JSON estructurado y con el `expedienteId` en el contexto.
-- **Métricas** → Mimir: técnicas y de negocio (expedientes por procedimiento y estado, generación de documentos, comunicaciones).
-- **Trazas** → Tempo, con el recorrido de cada petición a través de los módulos.
+- **Logs** → Loki, mediante el appender de OpenTelemetry (`logback-spring.xml`). También se muestran por consola.
+- **Métricas** → técnicas de Spring Boot y de Spring Modulith.
+- **Trazas** → Tempo, con el recorrido de cada petición. En local se muestrean todas (`management.tracing.sampling.probability=1.0`).
 
-> Los logs no contienen datos personales. El historial legal de los expedientes se guarda en base de datos.
+> Los logs no deben contener datos personales. El historial legal de los expedientes se guardará en base de datos.
 
 ---
 
@@ -162,8 +217,8 @@ La aplicación exporta logs, métricas y trazas por OTLP. En local, el contenedo
 - [Spring Modulith](https://docs.spring.io/spring-modulith/reference/)
 - [Spring Boot](https://docs.spring.io/spring-boot/)
 - [OpenTelemetry con Spring Boot](https://spring.io/blog/2025/11/18/opentelemetry-with-spring-boot/)
-- [Grafana Alloy](https://grafana.com/docs/alloy/latest/)
-- [SvelteKit](https://svelte.dev/docs/kit)
+- [Grafana otel-lgtm](https://github.com/grafana/docker-otel-lgtm)
+- [Testcontainers Keycloak](https://github.com/dasniko/testcontainers-keycloak)
 
 ---
 
