@@ -25,7 +25,7 @@ class TestcontainersConfiguration {
 
 	static final String LGTM_IMAGE = "grafana/otel-lgtm:0.33.1";
 
-	static final String KEYCLOAK_IMAGE = "quay.io/keycloak/keycloak:26.7";
+	static final String KEYCLOAK_IMAGE = "quay.io/keycloak/keycloak:26.7.5";
 
 	static final String KEYCLOAK_REALM = "siclone";
 
@@ -46,7 +46,10 @@ class TestcontainersConfiguration {
 
 	@Bean
 	KeycloakContainer keycloakContainer() {
-		return new KeycloakContainer(KEYCLOAK_IMAGE).withRealmImportFile("/keycloak/siclone-realm.json");
+		// Mismo realm que en compose.yaml; el contenedor arranca siempre con --import-realm
+		return new KeycloakContainer(KEYCLOAK_IMAGE).withCopyFileToContainer(
+				MountableFile.forHostPath("docker/keycloak/realms/siclone-realm.json"),
+				"/opt/keycloak/data/import/siclone-realm.json");
 	}
 
 	@Bean

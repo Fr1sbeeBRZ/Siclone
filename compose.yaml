@@ -28,6 +28,34 @@ services:
       timeout: 5s
       retries: 10
 
+  keycloak:
+    image: 'quay.io/keycloak/keycloak:26.7.5'  # misma versión que en TestcontainersConfiguration
+    # start-dev: HTTP sin TLS y sin caché de temas, solo para desarrollo.
+    # --import-realm: importa docker/keycloak/realms/*.json si el realm aún no existe.
+    command: ['start-dev', '--import-realm']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak   # base de datos creada en 01-init.sql
+      KC_DB_USERNAME: siclone
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HEALTH_ENABLED: 'true'   # /health/ready en el puerto de gestión 9000 (interno)
+    ports:
+      - '8180:8080'   # consola de administración y endpoints OIDC: http://localhost:8180
+    volumes:
+      - ./docker/keycloak/realms:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # La imagen no trae curl: se consulta /health/ready con /dev/tcp de bash
+      test: ['CMD-SHELL', 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q UP <&3']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
 volumes:
   postgres-data:
   lgtm-data:

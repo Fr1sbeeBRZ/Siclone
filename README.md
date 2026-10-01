@@ -13,9 +13,10 @@ Aplicación web para la **alta, tramitación y comunicación de expedientes**, c
 | Proyecto Spring Boot (Maven, en la raíz del repositorio) | ✅ Creado |
 | PostgreSQL + Flyway (tabla de eventos de Spring Modulith) | ✅ Configurado |
 | Observabilidad (OpenTelemetry → Grafana LGTM) | ✅ Configurado |
-| Seguridad como OAuth2 Resource Server (JWT de Keycloak) | ⚙️ Configurado; Keycloak solo en tests |
+| Seguridad como OAuth2 Resource Server (JWT de Keycloak) | ✅ Configurado |
+| Keycloak en `compose.yaml` (realm `siclone` con cliente y usuario de desarrollo) | ✅ Configurado |
 | Tests de integración con Testcontainers (PostgreSQL, LGTM, Keycloak) | ✅ Test de arranque del contexto |
-| Keycloak, MinIO y servidor SMTP en `compose.yaml` | ⏳ Pendiente |
+| MinIO y servidor SMTP en `compose.yaml` | ⏳ Pendiente |
 | Módulos de negocio (`expediente`, `procedimiento`, …) | ⏳ Pendiente |
 | Frontend (SvelteKit) | ⏳ Pendiente |
 
@@ -98,10 +99,10 @@ Cada módulo será un subpaquete de `fr1sbee.dev.siclone` (por ejemplo, `fr1sbee
 │       ├── java/fr1sbee/dev/siclone/
 │       │   ├── SicloneApplicationTests.java
 │       │   ├── TestSicloneApplication.java             # arranque local con Testcontainers
-│       │   └── TestcontainersConfiguration.java
-│       └── resources/keycloak/siclone-realm.json       # realm importado en los tests
+│           └── TestcontainersConfiguration.java
 ├── docker/
-│   └── postgres/init/01-init.sql                       # extensiones de PostgreSQL (solo 1ª vez)
+│   ├── postgres/init/01-init.sql                       # extensiones y BD de Keycloak (solo 1ª vez)
+│   └── keycloak/realms/siclone-realm.json              # realm importado en compose y en los tests
 ├── compose.yaml                                        # servicios para desarrollo local
 ├── .env.example                                        # variables para compose.yaml
 ├── pom.xml
@@ -130,7 +131,7 @@ cd Siclone
 
 ### 2. Crear el fichero `.env`
 
-`compose.yaml` lee la contraseña de PostgreSQL de un fichero `.env` (ignorado por git):
+`compose.yaml` lee las contraseñas de PostgreSQL y del administrador de Keycloak de un fichero `.env` (ignorado por git):
 
 ```bash
 cp .env.example .env
@@ -150,14 +151,40 @@ Gracias a *Docker Compose Support*, Spring Boot levanta automáticamente los ser
 | Swagger UI | http://localhost:8080/swagger-ui.html |
 | Actuator | http://localhost:8080/actuator |
 | PostgreSQL | `localhost:5432` (base de datos y usuario `siclone`) |
+| Keycloak | http://localhost:8180 (consola: admin / `KEYCLOAK_ADMIN_PASSWORD`) |
 | Grafana | http://localhost:3000 (admin / admin) |
 | OTLP (gRPC / HTTP) | `localhost:4317` / `localhost:4318` |
 
 Al arrancar, Flyway aplica las migraciones de `src/main/resources/db/migration`.
 
-> La primera vez que se crea el volumen de PostgreSQL se ejecuta `docker/postgres/init/01-init.sql`, que instala las extensiones `pgcrypto`, `unaccent` y `pg_trgm`. Si el volumen ya existía antes de este script, bórralo para que se ejecute: `docker compose down -v`.
+> La primera vez que se crea el volumen de PostgreSQL se ejecuta `docker/postgres/init/01-init.sql`, que instala las extensiones `pgcrypto`, `unaccent` y `pg_trgm` y crea la base de datos `keycloak`. Si el volumen ya existía, el script no se vuelve a ejecutar y Keycloak no arrancará por falta de su base de datos. Tienes dos opciones:
+>
+> - Borrar el volumen (se pierden los datos locales): `docker compose down -v`
+> - Crear solo la base de datos: `docker compose up -d postgres && docker compose exec postgres psql -U siclone -c "CREATE DATABASE keycloak"`
 
-> **Seguridad:** la API está protegida como OAuth2 Resource Server y espera JWT emitidos por Keycloak (`http://localhost:8180/realms/siclone` por defecto, configurable con `KEYCLOAK_ISSUER_URI`). Swagger UI, `/actuator/health` y `/actuator/info` son públicos; el resto exige token. Keycloak aún no está en `compose.yaml`, así que con `spring-boot:run` esas peticiones devolverán `401`.
+> **Seguridad:** la API está protegida como OAuth2 Resource Server y espera JWT emitidos por Keycloak (`http://localhost:8180/realms/siclone` por defecto, configurable con `KEYCLOAK_ISSUER_URI`). Swagger UI, `/actuator/health` y `/actuator/info` son públicos; el resto exige token.
+
+#### Keycloak en local
+
+Al arrancar, Keycloak importa `docker/keycloak/realms/siclone-realm.json` si el realm `siclone` todavía no existe. Los cambios hechos después desde la consola se guardan en la base de datos `keycloak` y **no** se sobrescriben al reiniciar; para volver al realm del fichero, borra el realm desde la consola y reinicia el contenedor.
+
+El realm incluye, **solo para desarrollo**:
+
+| Elemento | Valor |
+| --- | --- |
+| Cliente público | `siclone-frontend` (Authorization Code + PKCE; redirecciones a `localhost:5173` y Swagger UI) |
+| Usuario | `dev` / `dev` |
+
+Para obtener un token y llamar a la API desde la terminal:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/siclone/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=siclone-frontend -d username=dev -d password=dev | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/actuator/metrics
+```
+
+> El cliente tiene activado el *password grant* solo para poder pedir tokens así en local. No reutilices este realm fuera de desarrollo.
 
 #### Alternativa: arrancar con Testcontainers
 
@@ -165,7 +192,7 @@ Al arrancar, Flyway aplica las migraciones de `src/main/resources/db/migration`.
 ./mvnw spring-boot:test-run
 ```
 
-Usa `TestSicloneApplication`, que levanta PostgreSQL, Grafana LGTM y **Keycloak** (con el realm `siclone`) como contenedores efímeros. Útil para probar con Keycloak mientras no esté en `compose.yaml`; los datos se pierden al parar.
+Usa `TestSicloneApplication`, que levanta PostgreSQL, Grafana LGTM y Keycloak (con el mismo realm `siclone`) como contenedores efímeros en puertos aleatorios. Los datos se pierden al parar.
 
 ---
 
@@ -176,6 +203,7 @@ Todo está en `src/main/resources/application.properties`. Los valores por defec
 | Variable | Uso | Valor por defecto |
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | Contraseña de PostgreSQL en `compose.yaml` (fichero `.env`) | — |
+| `KEYCLOAK_ADMIN_PASSWORD` | Contraseña del usuario `admin` de Keycloak en `compose.yaml` (fichero `.env`) | — |
 | `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Base de datos fuera de local | La aporta Docker Compose |
 | `KEYCLOAK_ISSUER_URI` | Emisor de los JWT | `http://localhost:8180/realms/siclone` |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | Almacenamiento de documentos | `http://localhost:9000`, `minioadmin`, `minioadmin`, `siclone-documentos` |

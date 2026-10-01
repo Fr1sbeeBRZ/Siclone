@@ -13,5 +13,5 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- gen_random_uuid(), hashes
 CREATE EXTENSION IF NOT EXISTS unaccent;   -- búsquedas sin tildes
 CREATE EXTENSION IF NOT EXISTS pg_trgm;    -- búsquedas parciales (LIKE '%...%') con índices
 
--- Base de datos para Keycloak (cuando lo añadas al compose)
--- CREATE DATABASE keycloak;
+-- Base de datos para Keycloak (servicio "keycloak" de compose.yaml)
+CREATE DATABASE keycloak;
