@@ -10,10 +10,10 @@ services:
       - lgtm-data:/data   # conserva datos y dashboards entre reinicios
 
   postgres:
-    image: 'postgres:18'  # versión fija (misma que en TestcontainersConfiguration): 'latest' puede cambiar de versión mayor sin avisar
+    image: 'postgres:18'  # misma que en TestcontainersConfiguration
     environment:
-      POSTGRES_DB: siclone
-      POSTGRES_USER: siclone
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - '5432:5432'   # puerto fijo para conectarte con DBeaver, IntelliJ, psql...
@@ -23,11 +23,23 @@ services:
       # Scripts que se ejecutan SOLO la primera vez (cuando el volumen está vacío)
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U siclone -d siclone']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 10
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    ports:
+      - '8180:8080'
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KC_BOOTSTRAP_ADMIN_USERNAME}
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KC_BOOTSTRAP_ADMIN_PASSWORD}
+    command: [start-dev]
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+
 volumes:
   postgres-data:
   lgtm-data:
+  keycloak-data:
